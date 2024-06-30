@@ -1,0 +1,5 @@
+BEGIN;
+
+DROP TABLE IF EXISTS discount_histories CASCADE;
+
+COMMIT;

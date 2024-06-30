@@ -1,0 +1,57 @@
+{
+    "editor.codeActionsOnSave": {},
+    "editor.colorDecoratorsActivatedOn": "clickAndHover",
+    "editor.formatOnSave": false,
+    "editor.formatOnPaste": false,
+    "editor.formatOnType": false,
+    // put a ruler on the editing screen at 120 characters
+    "editor.rulers": [120],
+    // I use "goimports" instead of "gofmt"
+    // because it does the same thing but also formats imports
+    // go-specific settings
+    "[go]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "golang.go",
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit",
+            "source.fixAll": "explicit",
+        }
+    },
+    // make sure the go language server is enabled
+    "go.useLanguageServer": true,
+    // configure gopls, the go language server
+    "gopls": {
+        "ui.semanticTokens": true,
+        "ui.completion.usePlaceholders": true
+    },
+    // configure the go formatting tool to be goimports
+    "go.formatTool": "goimports",
+    "go.formatFlags": [
+        "-local",
+        "github.com/takt-corp/"
+    ],
+
+    // change the linting tool to be golangci
+    "go.lintTool": "golangci-lint",
+    "go.lintOnSave": "workspace",
+    "go.lintFlags": [
+        "--fast"
+    ],
+    // configure the tags we want to add by default
+    "go.addTags": {
+    "tags": "json,validate",
+    "options": "json=omitempty,validate=omitempty",
+    "promptForTags": false,
+    "transform": "snakecase",
+    "template": ""
+    },
+    // dont run code coverage on save
+    "go.coverOnSave": false,
+    "[go.mod]": {
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+    "go.diagnostic.vulncheck": "Imports",
+}

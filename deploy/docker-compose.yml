@@ -1,0 +1,56 @@
+services:
+      
+  postgres:
+    image: postgres:latest
+    container_name: ${POSTGRE_HOST}
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRE_USER}
+      POSTGRSE_PASSWORD: ${POSTGRE_PASSWD}
+      POSTGRES_DB: ${POSTGRE_DB}
+      POSTGRES_PORT: ${POSTGRE_PORT}
+    ports:
+      - "${POSTGRE_PORT}:${POSTGRE_PORT}"
+    volumes:
+      - ~/Documents/Projects/volumes/postgresql:/var/lib/postgresql/data
+    networks:
+      - gonet
+
+  redis:
+    image: redis:latest
+    container_name: ${REDIS_HOST}
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWD}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DATABASES: ${REDIS_DATABASES}
+    volumes:
+      - ~/Documents/Projects/volumes/redis:/data
+    networks:
+      - gonet
+
+  goapp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: go-app:latest
+    container_name: godev-container
+    restart: always
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "9001:9001"
+    volumes:
+      - ~/Documents/Projects/volumes/go-api:/go/src/app
+    # command: >
+    #   bash -c "make serve"
+    networks:
+      - gonet
+
+networks:
+  gonet:
+    driver: bridge
+

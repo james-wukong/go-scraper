@@ -92,6 +92,14 @@ func getIDFromUrl(url string) (id string) {
 	return
 }
 
+func getNumFromString(input string) string {
+	pattern := `\d+`
+	re := regexp.MustCompile(pattern)
+	match := re.FindString(input)
+
+	return match
+}
+
 func getPathFromURL(url string) (name string) {
 	pattern := `\/([\w-]{5,})\.htm[l]?`
 	re := regexp.MustCompile(pattern)

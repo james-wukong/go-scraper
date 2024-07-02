@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/james-wukong/go-app/internal/config"
 	"github.com/james-wukong/go-app/internal/constants"
@@ -68,6 +69,11 @@ func migrate(db *sqlx.DB, action string) (err error) {
 	files, err := filepath.Glob(filepath.Join(cwd, dir, fmt.Sprintf("*.%s.sql", action)))
 	if err != nil {
 		return errors.New("error when get files name")
+	}
+
+	if action == "down" {
+		// reverse order of execution
+		slices.Reverse(files)
 	}
 
 	for _, file := range files {

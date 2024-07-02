@@ -18,7 +18,7 @@ func (r *psqlRepoConn) GetByNameSku(name string, sku string) (outDom V1Domains.P
 	product := records.Products{}
 	err = r.conn.Get(&product, `SELECT * FROM products WHERE name=$1 AND sku=$2 LIMIT 1;`, name, sku)
 	if err != nil {
-		logger.Debug("product query error: "+err.Error(), logrus.Fields{"product": product, "name": name, "sku": sku})
+		logger.Debug("product query error: ", logrus.Fields{"err": err, "product": product, "name": name, "sku": sku})
 	}
 	// return category.ToV1Domain(), err
 	return product.ToV1Domain(), err
@@ -31,26 +31,26 @@ func (r *psqlRepoConn) UpsertProduct(inDom *V1Domains.ProductDomain) (lastInsert
 	if err = r.conn.Get(&product, qryGet, product.Name, product.Sku); err != nil {
 		// can't find a product, then insert new one
 		logger.Debug("product query error: ", logrus.Fields{"error": err, "product": product})
-		var qryInsert string = `INSERT INTO products (id, category_id, name, sku, model, prod_id, price, source, url_link, img_link, detail, specification, created_at)
-		VALUES (uuid_generate_v4(), :category_id, :name, :sku, :model, :prod_id, :price, :source, :url_link, :img_link, :detail, :specification, :created_at)
-		RETURNING id`
+		var qryInsert string = `INSERT INTO products (id, category_id, name, sku, model, prod_id, brand, price, source, url_link, img_link, detail, specification, created_at)
+		VALUES (uuid_generate_v4(), :category_id, :name, :sku, :model, :prod_id, :brand, :price, :source, :url_link, :img_link, :detail, :specification, :created_at)
+		RETURNING id;`
 		productJSON := product.ToProductJson()
-		_, err = r.conn.NamedExec(qryInsert, productJSON)
-		// TODO Test the next query -> not working
-		// err = r.conn.QueryRowx(qryInsert, productJSON).Scan(&lastInsertId)
-		if err != nil {
-			logger.Debug("product insert error: "+err.Error(), logrus.Fields{"query": qryInsert})
-			return "", err
-		}
-		err = r.conn.Get(&product, qryGet, product.Name, product.Sku)
-		if err != nil {
-			logger.Debug("product query error: "+err.Error(), logrus.Fields{"query": err})
-			return "", err
-		}
-		return product.Id, err
-	}
-	// update
-	// _, err = r.conn.NamedExec(``, product)
 
-	return product.Id, err
+		stmt, err := r.conn.PrepareNamed(qryInsert)
+		if err != nil {
+			logger.Debug("product preparenamed insert", logrus.Fields{"err": err})
+			return "", err
+		}
+		defer stmt.Close()
+
+		if err = stmt.Get(&lastInsertId, productJSON); err != nil {
+			logger.Debug("product preparenamed get", logrus.Fields{"err": err})
+			return "", err
+		}
+		logger.Debug("last inserted product id", logrus.Fields{"lastInsertId": lastInsertId, "product": product})
+		return lastInsertId, nil
+	} else {
+		logger.Debug("last found product id", logrus.Fields{"found id": product.Id})
+		return product.Id, nil
+	}
 }

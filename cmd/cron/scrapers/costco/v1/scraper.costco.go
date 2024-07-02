@@ -4,7 +4,6 @@ import (
 	"math"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -18,7 +17,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func CostcoScrap(conn *sqlx.DB) {
+func CostcoScraper(conn *sqlx.DB) {
 	// initializing the list of pages to scrape with an empty slice
 	var pagesToScrape []string
 	var searchPattern string = "/CatalogSearch?"
@@ -34,7 +33,13 @@ func CostcoScrap(conn *sqlx.DB) {
 		// turning on the asynchronous request mode in Colly
 		colly.Async(true),
 	)
-
+	// set delay to prevent from exceeding the rate limit
+	c.Limit(&colly.LimitRule{
+		DomainGlob:  "*costco.*",
+		Parallelism: 1,
+		Delay:       2 * time.Second,
+		// RandomDelay: 1 * time.Second,
+	})
 	// setting a valid User-Agent header
 	c.UserAgent = scrapers.CostcoUserAgent
 	cookies := []*http.Cookie{
@@ -42,6 +47,14 @@ func CostcoScrap(conn *sqlx.DB) {
 			Name:  scrapers.CostcoCookiesName,
 			Value: scrapers.CostcoCookiesValue,
 		},
+		// {
+		// 	Name:  scrapers.CostcoCookiesBmsvKey,
+		// 	Value: scrapers.CostcoCookiesBmsvVal,
+		// },
+		// {
+		// 	Name:  scrapers.CostcoCookiesBmszKey,
+		// 	Value: scrapers.CostcoCookiesBmszVal,
+		// },
 		{
 			Name:  "Domain",
 			Value: "www.costco.ca",
@@ -49,6 +62,18 @@ func CostcoScrap(conn *sqlx.DB) {
 		{
 			Name:  "Domain",
 			Value: ".costco.ca",
+		},
+		// {
+		// 	Name:  "BCO",
+		// 	Value: "pm1",
+		// },
+		{
+			Name:  "Path",
+			Value: "/",
+		},
+		{
+			Name:  "SameSite",
+			Value: "None",
 		},
 	}
 	c.SetCookies(pageToScrape, cookies)
@@ -58,7 +83,6 @@ func CostcoScrap(conn *sqlx.DB) {
 	var prodId string
 	// Channel to signal completion of the first callback
 	var done chan struct{}
-	var valid scrapers.Valid
 	var price = make(map[string]scrapers.Prices)
 
 	db := V1Postgres.NewCategoryRepo(conn)
@@ -84,6 +108,7 @@ func CostcoScrap(conn *sqlx.DB) {
 				from := p.ChildAttr(validSelector+`> time:first-child`, "datetime")
 				to := p.ChildAttr(validSelector+`> time:nth-child(2)`, "datetime")
 				duration := p.ChildText(validSelector + `> span`)
+				valid := scrapers.Valid{}
 				valid.StartAt = parseDate(from)
 				valid.EndedAt = parseDate(to)
 				valid.Duration = strings.TrimSpace(duration)
@@ -123,7 +148,7 @@ func CostcoScrap(conn *sqlx.DB) {
 					pagesToScrape = append(pagesToScrape, link)
 				}
 			} else {
-				logger.Debug("empty link1: "+link, logrus.Fields{constants.LoggerCategory: constants.LoggerCategoryScraper})
+				logger.Debug("empty link1: ", logrus.Fields{"link": link})
 			}
 		})
 	})
@@ -133,61 +158,49 @@ func CostcoScrap(conn *sqlx.DB) {
 		// discovering a new page
 		e.ForEach(`div.product`, func(_ int, p *colly.HTMLElement) {
 			link := p.ChildAttr(`span.description a`, "href")
-			// itemSku := p.ChildAttr(`div.product-tile-set > input.itemNumber[type="hidden"]`, "value")
-			// // sku := getIDFromUrl(link)
-			// pAfterStr := p.ChildText(`div.product-tile-set div.thumbnail div.price`)
-			// pAfter, err := parsePrice(pAfterStr)
-			// if err != nil {
-			// 	pAfter = 0.0
-			// }
-			// pSaveStr := p.ChildText(`div.product-tile-set div.thumbnail p.promo`)
-			// pSave, err := parsePrice(pSaveStr)
-			// if err != nil {
-			// 	pSave = 0.0
-			// }
-			// prices := scrapers.Prices{
-			// 	InWarehouse: float32(pAfter + pSave),
-			// 	EcoFee:      0.0,
-			// 	InstSave:    float32(pSave),
-			// 	Price:       float32(pAfter),
-			// 	Valid:       nil,
-			// }
-			// price[itemSku] = prices
+
 			if strings.Contains(p.Request.URL.String(), searchPattern) {
 				if strings.Contains(link, pageDomain) {
 					// if this is a product detail link
 					pagesToScrape = append(pagesToScrape, link)
 				}
 			} else {
-				logger.Debug("empty link2: "+link, logrus.Fields{constants.LoggerCategory: constants.LoggerCategoryScraper})
+				logger.Debug("empty link2: ", logrus.Fields{"link2": link})
 			}
 		})
 	})
-
+	c.OnError(func(r *colly.Response, err error) {
+		logger.Debug("Request list URL failed with response", logrus.Fields{"err": err.Error(), "r.Body": string(r.Body)})
+		// var retries int = 0
+		// // Attempt to retry the request
+		// for retries < 20 {
+		// 	retries += 1
+		// 	err = r.Request.Retry()
+		// 	if err != nil {
+		// 		logger.Debug("retry failed", logrus.Fields{"err": err, "retries": retries})
+		// 	} else {
+		// 		break
+		// 	}
+		// }
+	})
+	// OnResponse callback
+	c.OnResponse(func(r *colly.Response) {
+		logger.Debug("Request list URL response code", logrus.Fields{"code": r.StatusCode})
+	})
 	c.OnScraped(func(r *colly.Response) {
-		if len(pagesToScrape) > 0 {
-			logger.Debug("c scraper done, with total length: "+strconv.Itoa(len(pagesToScrape)), logrus.Fields{constants.LoggerCategory: constants.LoggerCategoryScraper})
-		} else {
-			logger.Debug("c scraper not exit properly ", logrus.Fields{constants.LoggerCategory: constants.LoggerCategoryScraper})
-		}
 
 	})
 
 	// scrapping the catgories
 	d.OnHTML(`ul#crumbs_ul > div > ul > li:last-child a[itemprop="item"]`, func(e *colly.HTMLElement) {
-		// logger.Debug("sending signal chan: ", logrus.Fields{})
-		// discovering a new page
-		// category := e.DOM.Contents().Not("i, span").Text()
-		// category = strings.TrimSpace(category)
 		pathName := getPathFromURL(e.Attr(`href`))
 		// categoryD, err := db.GetByNamePlatform(category, uint(constants.COSTCO))
 		categoryD, err := db.GetByURLPlatform(pathName, uint(constants.COSTCO))
 		categoryId = categoryD.Id
 		if err != nil {
-			logger.Debug("category error caught: "+err.Error(), logrus.Fields{"category": pathName, "int": uint(constants.COSTCO)})
+			logger.Debug("category error caught: ", logrus.Fields{"category": pathName, "err": err})
 			categoryId = scrapers.CostcoDefaultCategory
 		}
-		prodId = getIDFromUrl(e.Request.URL.String())
 		close(done) // Signal that the first callback is done
 	})
 
@@ -195,31 +208,29 @@ func CostcoScrap(conn *sqlx.DB) {
 	d.OnHTML(`div[itemtype="https://schema.org/Product"]`, func(e *colly.HTMLElement) {
 		// logger.Debug("receiving signal chan: ", logrus.Fields{})
 		<-done // Wait for the signal from the first callback
-		var reviews reviewResp
-		product := records.Products{}
-		details := records.DetailBase{Detail: make(map[string][]string)}
-		specs := records.SpecBase{Spec: make(map[string]string)}
 		time := records.TimeBase{
 			CreatedAt: time.Now(),
 		}
-
+		// get product info
+		product := records.Products{TimeBase: time}
 		pName := e.ChildText(`div#product-details div.product-h1-container-v2 h1[itemprop="name"]`)
 		product.Name = strings.Split(pName, ", ")[0]
 		product.CategoryId = categoryId
 		product.ProdId = prodId
 		itemSku := getIDFromUrl(e.Request.URL.String())
+		prodId = getIDFromUrl(e.Request.URL.String())
 		// product.Sku = getIDFromUrl(e.Request.URL.String())
-		product.Sku = e.ChildText(`div#product-details div#product-body-item-number span`)
+		product.Sku = getNumFromString(e.ChildText(`div#product-details div#product-body-item-number span`))
 
-		var discHist records.DiscountHistories
-		var p scrapers.Prices
-		var ok bool
 		// Check if product.Sku exists in the price map
-		if p, ok = price[itemSku]; !ok {
+		p, ok := price[itemSku]
+		if !ok {
 			// If product.Sku does not exist, check if itemSku exists in the price map
-			if p, ok = price[product.Sku]; !ok {
+			p, ok = price[product.Sku]
+			if !ok {
 				// If neither exists, skip the rest of the code
 				logger.Debug("price & sku not found: ", logrus.Fields{"sku": product.Sku, "price": p})
+				return
 			}
 		}
 		product.Model = e.ChildText(`div#product-details div#product-body-model-number span`)
@@ -230,14 +241,21 @@ func CostcoScrap(conn *sqlx.DB) {
 
 		descNode := e.DOM.Find(`div#product-info > div > div > div > div > div#nav-pdp-tab-header-3 > div > div.product-info-description > span#productDescriptions1`)
 		description := strings.TrimSpace(descNode.Contents().First().Text())
+		// get product details
+		details := records.DetailBase{Detail: make(map[string][]string)}
 		details.Detail["Description"] = []string{description}
 		// TODO add more details into struct
 		// next := descNode.Text()
+		// get product specification
+		specs := records.SpecBase{Spec: make(map[string]string)}
 		e.ForEach(`div#product-info > div > div > div > div > div#nav-pdp-tab-header-5 > div > div.product-info-description > div > div`, func(_ int, s *colly.HTMLElement) {
 			name := strings.TrimSpace(s.ChildText(`div:first-child`))
 			info := strings.TrimSpace(s.ChildText(`div:nth-child(2)`))
 			// spec := records.SpecBase{Spec: make(map[string]string)}
 			specs.Spec[name] = info
+			if strings.ToLower(name) == "brand" {
+				product.Brand = info
+			}
 		})
 
 		product.Detail = &details
@@ -246,8 +264,10 @@ func CostcoScrap(conn *sqlx.DB) {
 		productDomain := product.ToV1Domain()
 		pID, _ := dbProduct.UpsertProduct(&productDomain)
 
-		getReviewStat(prodId, &reviews)
+		// get avg ratings
+		var reviews reviewResp
 		var avgRating records.AvgRatings
+		getReviewStat(prodId, &reviews)
 		avgRating.ProductID = pID
 		avgRating.Star5 = reviews.Star5
 		avgRating.Star4 = reviews.Star4
@@ -274,6 +294,8 @@ func CostcoScrap(conn *sqlx.DB) {
 		avgRatingDomain := avgRating.ToV1Domain()
 		dbAvgRate.UpsertAvgRating(&avgRatingDomain)
 
+		// get discout history
+		var discHist records.DiscountHistories
 		discHist.ProductID = pID
 		discHist.Price = p.Price
 		discHist.SaveAmount = p.InstSave
@@ -286,9 +308,15 @@ func CostcoScrap(conn *sqlx.DB) {
 		discHistDomin := discHist.ToV1Domain()
 		dbDiscHist.SaveDiscHistory(&discHistDomin)
 	})
-
+	d.OnError(func(r *colly.Response, err error) {
+		logger.Debug("Request detail URL failed with response", logrus.Fields{"r": string(r.Body), "err": err.Error()})
+	})
+	// OnResponse callback
+	d.OnResponse(func(r *colly.Response) {
+		logger.Debug("Request detail URL response code", logrus.Fields{"code": r.StatusCode})
+	})
 	d.OnScraped(func(r *colly.Response) {
-		logger.Debug("d scraper done: "+r.Request.URL.String(), logrus.Fields{constants.LoggerCategory: constants.LoggerCategoryScraper})
+
 	})
 
 	// visiting the first page
@@ -296,11 +324,16 @@ func CostcoScrap(conn *sqlx.DB) {
 	// wait for Colly to visit all pages
 	c.Wait()
 
+	// logger.Debug("all prices: ", logrus.Fields{"price": price})
+
 	for _, page := range pagesToScrape {
-		logger.Debug("visiting page: "+page, logrus.Fields{})
+		logger.Debug("visiting page: ", logrus.Fields{"page": page})
 		// initialize the chan
 		done = make(chan struct{})
 		d.Visit(page)
 		d.Wait()
+		// if idx >= 3 {
+		// 	break
+		// }
 	}
 }

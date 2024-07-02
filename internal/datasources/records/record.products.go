@@ -7,6 +7,7 @@ type Products struct {
 	Sku        string      `db:"sku"`
 	Model      string      `db:"model"`
 	ProdId     string      `db:"prod_id"`
+	Brand      string      `db:"brand"`
 	Price      float32     `db:"price"`
 	Source     int         `db:"source"`
 	UrlLink    string      `db:"url_link"`

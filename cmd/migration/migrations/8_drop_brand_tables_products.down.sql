@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE products 
+DROP COLUMN IF EXISTS brand;
+
+COMMIT;

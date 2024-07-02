@@ -15,7 +15,7 @@ import (
 	"github.com/gocolly/colly/v2"
 )
 
-func CostcoCategoryScrap(conn *sqlx.DB) {
+func CostcoCategoryScraper(conn *sqlx.DB) {
 	// the URL to scrape
 	pageDomain := "https://www.costco.com/"
 	pageToScrape := pageDomain + "SiteMapDisplayView"

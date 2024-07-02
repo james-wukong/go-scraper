@@ -26,15 +26,36 @@ func (r *psqlRepoConn) GetHistoryByPID(pid string) (outDom V1Domains.DiscHistory
 
 func (r *psqlRepoConn) SaveDiscHistory(inDom *V1Domains.DiscHistoryDomain) (lastInsertId uint, err error) {
 	history := records.FromDiscHisotryV1Domain(inDom)
+	var qryFind string = `SELECT id FROM discount_histories where product_id=$1 AND ended_at=$2 AND duration=$3 Limit 1;`
 	var qryInsert string = `INSERT INTO discount_histories (product_id, price, save_amount, save_percent, duration, started_at, ended_at, created_at)
 		VALUES (:product_id, :price, :save_amount, :save_percent, :duration, :started_at, :ended_at, :created_at)
-		RETURNING id`
-	_, err = r.conn.NamedExec(qryInsert, history)
-	// TODO Test the next query -> not working
-	// err = r.conn.QueryRowx(qryInsert, productJSON).Scan(&lastInsertId)
-	if err != nil {
-		logger.Debug("avg ratings inserting query error: "+err.Error(), logrus.Fields{})
-		return 0, err
+		RETURNING id;`
+	// search for pre-existing
+	err = r.conn.Get(&history, qryFind, inDom.ProductID, inDom.EndedAt, inDom.Duration)
+	if err == nil {
+		// found previous record
+		return history.ID, nil
+	} else {
+		logger.Debug("error getting discount history: ", logrus.Fields{"err": err})
+		// insert history record
+		// TODO Test the next query -> not working
+		// err = r.conn.QueryRowx(qryInsert, productJSON).Scan(&lastInsertId)
+		// if _, err = r.conn.NamedQuery(qryInsert, history); err != nil {
+		// 	logger.Debug("error inserting discount history: ", logrus.Fields{"err": err})
+		// 	return 0, err
+		// }
+		stmt, err := r.conn.PrepareNamed(qryInsert)
+		if err != nil {
+			logger.Debug("discount preparenamed insert", logrus.Fields{"err": err})
+			return 0, err
+		}
+		defer stmt.Close()
+
+		if err = stmt.Get(&lastInsertId, history); err != nil {
+			logger.Debug("discount preparenamed get", logrus.Fields{"err": err})
+			return 0, err
+		}
+		return lastInsertId, nil
 	}
-	return history.ID, err
+
 }

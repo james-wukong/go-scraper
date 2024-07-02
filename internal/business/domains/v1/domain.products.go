@@ -11,6 +11,7 @@ type ProductDomain struct {
 	Sku        string
 	Model      string
 	ProdId     string
+	Brand      string
 	Price      float32
 	Source     int
 	UrlLink    string

@@ -1,6 +1,8 @@
 package scrapers
 
-import "time"
+import (
+	"time"
+)
 
 type Prices struct {
 	InWarehouse float32
@@ -14,4 +16,9 @@ type Valid struct {
 	StartAt  time.Time
 	EndedAt  time.Time
 	Duration string
+}
+
+type FBPrices struct {
+	CategoryUrl string
+	Prices
 }
